@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Synapse</title>
+    <script src="https://cdn.tailwindcss.com?plugins=typography"></script>
+    <script>
+      tailwind.config = {
+        darkMode: 'class',
+        theme: {
+          extend: {
+            colors: {
+              // Catppuccin Mocha (Dark)
+              mocha: {
+                base: '#1e1e2e',
+                mantle: '#181825',
+                surface0: '#313244',
+                surface1: '#45475a',
+                text: '#cdd6f4',
+                subtext1: '#bac2de',
+                blue: '#89b4fa',
+                lavender: '#b4befe',
+                mauve: '#cba6f7',
+                pink: '#f5c2e7',
+                red: '#f38ba8',
+                yellow: '#f9e2af',
+                sky: '#89dceb',
+                green: '#a6e3a1',
+                overlay0: '#6c7086',
+              },
+              // Catppuccin Latte (Light)
+              latte: {
+                base: '#eff1f5',
+                mantle: '#e6e9ef',
+                surface0: '#ccd0da',
+                surface1: '#bcc0cc',
+                text: '#4c4f69',
+                subtext1: '#5c5f77',
+                blue: '#1e66f5',
+                lavender: '#7287fd',
+                red: '#d20f39',
+                peach: '#fe640b',
+                green: '#40a02b',
+                overlay0: '#9ca0b0',
+              }
+            },
+            keyframes: {
+              typing: {
+                '0%, 100%': { transform: 'translateY(0)', opacity: '0.4' },
+                '50%': { transform: 'translateY(-4px)', opacity: '1' },
+              }
+            },
+            animation: {
+              'pulse-slow': 'pulse 3s cubic-bezier(0.4, 0, 0.6, 1) infinite',
+              'typing-dot': 'typing 1.4s infinite ease-in-out both',
+            },
+            typography: (theme) => ({
+              DEFAULT: {
+                css: {
+                  color: theme('colors.latte.text'),
+                  a: {
+                    color: theme('colors.latte.blue'),
+                    '&:hover': {
+                      color: theme('colors.latte.lavender'),
+                    },
+                  },
+                  strong: { color: theme('colors.latte.text') },
+                  h1: { color: theme('colors.latte.text') },
+                  h2: { color: theme('colors.latte.text') },
+                  h3: { color: theme('colors.latte.text') },
+                  h4: { color: theme('colors.latte.text') },
+                  blockquote: {
+                    color: theme('colors.latte.subtext1'),
+                    borderLeftColor: theme('colors.latte.surface1'),
+                  },
+                  code: {
+                    color: theme('colors.latte.red'),
+                    backgroundColor: theme('colors.latte.surface0'),
+                    padding: '2px 4px',
+                    borderRadius: '4px',
+                    fontWeight: '400',
+                  },
+                },
+              },
+              invert: {
+                css: {
+                  color: theme('colors.mocha.text'),
+                  a: {
+                    color: theme('colors.mocha.blue'),
+                    '&:hover': {
+                      color: theme('colors.mocha.mauve'),
+                    },
+                  },
+                  strong: { color: theme('colors.mocha.text') },
+                  h1: { color: theme('colors.mocha.text') },
+                  h2: { color: theme('colors.mocha.text') },
+                  h3: { color: theme('colors.mocha.text') },
+                  h4: { color: theme('colors.mocha.text') },
+                  blockquote: {
+                    color: theme('colors.mocha.overlay0'),
+                    borderLeftColor: theme('colors.mocha.surface1'),
+                  },
+                  code: {
+                    color: theme('colors.mocha.pink'),
+                    backgroundColor: theme('colors.mocha.surface0'),
+                  },
+                },
+              },
+            }),
+          }
+        }
+      }
+    </script>
+    <style>
+      /* Base styles handled by Tailwind classes in Body, 
+         but we set scrollbar globally */
+      
+      ::-webkit-scrollbar {
+        width: 8px;
+        height: 8px;
+      }
+      
+      /* Dark Mode Scrollbar (Mocha) */
+      .dark ::-webkit-scrollbar-track {
+        background: #1e1e2e; 
+      }
+      .dark ::-webkit-scrollbar-thumb {
+        background: #45475a; 
+        border-radius: 4px;
+      }
+      .dark ::-webkit-scrollbar-thumb:hover {
+        background: #585b70; 
+      }
+
+      /* Light Mode Scrollbar (Latte) */
+      ::-webkit-scrollbar-track {
+        background: #eff1f5; 
+      }
+      ::-webkit-scrollbar-thumb {
+        background: #bcc0cc; 
+        border-radius: 4px;
+      }
+      ::-webkit-scrollbar-thumb:hover {
+        background: #9ca0b0; 
+      }
+    </style>
+  <script type="importmap">
+{
+  "imports": {
+    "react": "https://aistudiocdn.com/react@^19.2.0",
+    "react/": "https://aistudiocdn.com/react@^19.2.0/",
+    "react-dom/": "https://aistudiocdn.com/react-dom@^19.2.0/",
+    "react-markdown": "https://aistudiocdn.com/react-markdown@^10.1.0",
+    "lucide-react": "https://aistudiocdn.com/lucide-react@^0.554.0",
+    "uuid": "https://aistudiocdn.com/uuid@^13.0.0",
+    "remark-gfm": "https://esm.sh/remark-gfm@4.0.0?bundle",
+    "react-syntax-highlighter": "https://esm.sh/react-syntax-highlighter@15.5.0?bundle",
+    "react-syntax-highlighter/dist/esm/styles/prism": "https://esm.sh/react-syntax-highlighter@15.5.0/dist/esm/styles/prism?bundle",
+    "react-syntax-highlighter/": "https://aistudiocdn.com/react-syntax-highlighter@^16.1.0/"
+  }
+}
+</script>
+<link rel="stylesheet" href="/index.css">
+</head>
+  <body class="bg-latte-base text-latte-text dark:bg-mocha-base dark:text-mocha-text transition-colors duration-300">
+    <div id="root"></div>
+  <script type="module" src="/index.tsx"></script>
+</body>
+</html>
