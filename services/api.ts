@@ -4,7 +4,7 @@ import { Model, Message, MessageRole, ChatCompletionChunk } from '../types';
 const API_BASE = 'https://enter.pollinations.ai/api';
 
 // 1. For local testing: You can paste your API key between the quotes below
-const MANUAL_API_KEY = 'plln_pk_PFWl4j4q8XhvP9huYS9DOvum2JfGO0yU';
+const MANUAL_API_KEY = '';
 
 // 2. Helper to safely get the API key from various sources
 const getApiKey = () => {
