@@ -45,7 +45,7 @@ This project requires the following environment variable to be set:
 
 *   `API_KEY`: Your primary API key for application functionality.
 
-**Note:** The Gemini API key is not used in this version of the application.
+**Note:** get your api key here [Pollinations API](https://enter.pollinations.ai).
 
 ## Deployment to Vercel
 
