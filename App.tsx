@@ -1,11 +1,11 @@
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Message, MessageRole, MessageType, ChatSession } from './types';
-import { fetchModels, streamChatCompletion } from './services/api';
+import { fetchModels, streamChatCompletion, generateChatTitle } from './services/api';
 import { Sidebar } from './components/Sidebar';
 import { RightPanel } from './components/RightPanel';
 import { MessageBubble } from './components/MessageBubble';
-import { Send, Menu, Loader2, AlertCircle, PanelRightOpen, PanelRightClose, PanelLeftOpen, PanelLeftClose, Settings2, MessageSquare, Paperclip, X } from 'lucide-react';
+import { Send, Menu, Loader2, AlertCircle, PanelRightOpen, PanelRightClose, PanelLeftOpen, PanelLeftClose, Settings2, MessageSquare, Paperclip, X, RotateCcw } from 'lucide-react';
 import { v4 as uuidv4 } from 'uuid';
 
 const STORAGE_KEY_SESSIONS = 'pollinations_sessions_v1';
@@ -52,7 +52,19 @@ const App: React.FC = () => {
   
   // Models State
   const [textModels, setTextModels] = useState<string[]>(['openai']);
-  const [selectedTextModel, setSelectedTextModel] = useState('openai');
+  const [selectedTextModel, setSelectedTextModel] = useState(() => {
+    const saved = localStorage.getItem(STORAGE_KEY_MODELS);
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        return parsed.text || 'openai';
+      } catch {
+        return 'openai';
+      }
+    }
+    return 'openai';
+  });
+  
   const [error, setError] = useState<string | null>(null);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -72,16 +84,29 @@ const App: React.FC = () => {
   useEffect(() => {
     const loadModels = async () => {
       try {
-        const { textModels } = await fetchModels();
-        setTextModels(textModels.length ? textModels : ['openai']);
+        const { textModels: fetchedModels } = await fetchModels();
         
+        // Handle Persistence: Check if we have a saved model
         const savedModels = localStorage.getItem(STORAGE_KEY_MODELS);
+        let savedModel = '';
         if (savedModels) {
-            const { text } = JSON.parse(savedModels);
-            if (text && textModels.includes(text)) setSelectedTextModel(text);
-            else if (textModels.length) setSelectedTextModel(textModels[0]);
-        } else {
-            if (textModels.length) setSelectedTextModel(textModels[0]);
+            try { savedModel = JSON.parse(savedModels).text; } catch {}
+        }
+
+        let finalModels = fetchedModels.length ? fetchedModels : ['openai'];
+
+        // If saved model exists but isn't in the fetched list, add it to ensure it remains selectable
+        if (savedModel && !finalModels.includes(savedModel)) {
+            finalModels = [savedModel, ...finalModels];
+        }
+
+        setTextModels(finalModels);
+        
+        // Ensure the correct model is selected
+        if (savedModel) {
+            setSelectedTextModel(savedModel);
+        } else if (finalModels.length > 0) {
+            setSelectedTextModel(finalModels[0]);
         }
       } catch (err) {
         console.error("Model fetch error", err);
@@ -211,7 +236,7 @@ const App: React.FC = () => {
   const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files.length > 0) {
       const files = Array.from(e.target.files);
-      const imagePromises = files.map(file => convertFileToBase64(file));
+      const imagePromises = files.map(file => convertFileToBase64(file as File));
       try {
         const base64Images = await Promise.all(imagePromises);
         setSelectedImages(prev => [...prev, ...base64Images]);
@@ -230,7 +255,7 @@ const App: React.FC = () => {
       if (items[i].type.indexOf('image') !== -1) {
         const file = items[i].getAsFile();
         if (file) {
-          imagePromises.push(convertFileToBase64(file));
+          imagePromises.push(convertFileToBase64(file as File));
         }
       }
     }
@@ -250,11 +275,66 @@ const App: React.FC = () => {
     setSelectedImages(prev => prev.filter((_, i) => i !== index));
   };
 
+  const handleEditMessage = async (id: string, newContent: string) => {
+    if (isLoading) return;
+    
+    const session = getCurrentSession();
+    if (!session) return;
+
+    const msgIndex = session.messages.findIndex(m => m.id === id);
+    if (msgIndex === -1) return;
+
+    // Slice history to remove everything after the edited message
+    const newHistory = session.messages.slice(0, msgIndex + 1);
+    
+    // Update content of the edited message
+    newHistory[msgIndex] = { 
+      ...newHistory[msgIndex], 
+      content: newContent 
+    };
+
+    // Update session and trigger generation
+    updateCurrentSessionMessages(newHistory);
+    
+    // Only generate if it's a user message (usually true for edits)
+    if (newHistory[msgIndex].role === MessageRole.User) {
+      setIsLoading(true);
+      setError(null);
+      await handleTextGeneration(newHistory);
+    }
+  };
+
+  const handleRegenerate = async () => {
+    if (isLoading) return;
+    const session = getCurrentSession();
+    if (!session) return;
+    
+    const messages = session.messages;
+    if (messages.length === 0) return;
+    
+    const lastMessage = messages[messages.length - 1];
+    
+    // Only regenerate if last message is from assistant
+    if (lastMessage.role === MessageRole.Assistant) {
+        // Remove the last message (the AI response) and trigger generation again
+        const historyWithoutLast = messages.slice(0, -1);
+        
+        // Update state immediately to remove the old message
+        updateCurrentSessionMessages(historyWithoutLast);
+        
+        setIsLoading(true);
+        setError(null);
+        await handleTextGeneration(historyWithoutLast);
+    }
+  };
+
   const handleSendMessage = async () => {
     if ((!input.trim() && selectedImages.length === 0) || isLoading) return;
     if (!currentSessionId) handleNewChat();
 
     const currentMsgs = getCurrentMessages();
+    // Check if this is the start of the conversation for title generation
+    const isFirstMessage = currentMsgs.length === 0;
     
     const userMessage: Message = {
       id: uuidv4(),
@@ -267,10 +347,25 @@ const App: React.FC = () => {
     const updatedMessages = [...currentMsgs, userMessage];
     updateCurrentSessionMessages(updatedMessages);
     
+    const textContent = userMessage.content;
     setInput('');
     setSelectedImages([]);
     setIsLoading(true);
     setError(null);
+    
+    // Trigger AI Title Generation in background if it's the first message
+    if (isFirstMessage && textContent) {
+        generateChatTitle(textContent, selectedTextModel).then(title => {
+            if (title) {
+                setSessions(prev => prev.map(s => {
+                    if (s.id === currentSessionId) {
+                        return { ...s, title };
+                    }
+                    return s;
+                }));
+            }
+        });
+    }
 
     await handleTextGeneration(updatedMessages);
   };
@@ -282,7 +377,8 @@ const App: React.FC = () => {
         role: MessageRole.Assistant,
         content: '',
         type: MessageType.Text,
-        isStreaming: true
+        isStreaming: true,
+        model: selectedTextModel
     };
 
     const historyWithBot = [...currentHistory, botMessage];
@@ -357,7 +453,8 @@ const App: React.FC = () => {
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
+    const isMobile = window.innerWidth < 768;
+    if (e.key === 'Enter' && !e.shiftKey && !isMobile) {
       e.preventDefault();
       handleSendMessage();
     }
@@ -366,8 +463,17 @@ const App: React.FC = () => {
   const currentMessages = getCurrentMessages();
 
   return (
-    <div className="flex h-screen overflow-hidden bg-latte-base dark:bg-mocha-base text-latte-text dark:text-mocha-text font-sans transition-colors duration-300">
+    <div className="flex h-[100dvh] overflow-hidden bg-latte-base dark:bg-mocha-base text-latte-text dark:text-mocha-text font-sans transition-colors duration-300">
       
+      {/* Mobile Backdrop for Left Sidebar */}
+      {isLeftSidebarOpen && (
+        <div 
+          className="fixed inset-0 bg-black/50 backdrop-blur-sm z-[25] md:hidden transition-opacity duration-300"
+          onClick={() => setIsLeftSidebarOpen(false)}
+          aria-hidden="true"
+        />
+      )}
+
       {/* Left Sidebar */}
       <Sidebar 
         sessions={sessions}
@@ -428,6 +534,7 @@ const App: React.FC = () => {
                 key={msg.id} 
                 message={msg} 
                 isDark={theme === 'dark'} 
+                onEdit={handleEditMessage}
               />
             ))}
             
@@ -446,6 +553,19 @@ const App: React.FC = () => {
         <div className="p-4 border-t border-latte-surface0 dark:border-mocha-surface0 bg-latte-base dark:bg-mocha-base transition-colors z-10">
           <div className="max-w-3xl mx-auto relative">
             
+            {/* Regenerate Button */}
+            {!isLoading && currentMessages.length > 0 && currentMessages[currentMessages.length - 1].role === MessageRole.Assistant && (
+              <div className="flex justify-center mb-2 animate-in fade-in slide-in-from-bottom-2 duration-300">
+                <button
+                  onClick={handleRegenerate}
+                  className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-white dark:bg-mocha-surface0 border border-latte-surface1 dark:border-mocha-surface1 shadow-sm hover:bg-latte-surface0 dark:hover:bg-mocha-surface1 transition-all text-xs font-medium text-latte-text dark:text-mocha-text group"
+                >
+                  <RotateCcw size={13} className="group-hover:-rotate-180 transition-transform duration-500" />
+                  <span>Regenerate response</span>
+                </button>
+              </div>
+            )}
+
             <div className="relative rounded-xl border shadow-sm border-latte-surface1 dark:border-mocha-surface0 bg-white dark:bg-mocha-surface0 transition-all duration-300 overflow-hidden">
               
               {/* Image Preview */}
@@ -492,38 +612,53 @@ const App: React.FC = () => {
 
                 <textarea
                   value={input}
-                  onChange={(e) => setInput(e.target.value)}
+                  onChange={(e) => {
+                    setInput(e.target.value);
+                    e.target.style.height = 'auto';
+                    e.target.style.height = `${e.target.scrollHeight}px`;
+                  }}
                   onKeyDown={handleKeyDown}
                   onPaste={handlePaste}
                   placeholder={selectedImages.length > 0 ? "Add a caption..." : "Type a message..."}
-                  className="w-full bg-transparent border-none focus:ring-0 resize-none py-2.5 max-h-32 min-h-[44px] text-latte-text dark:text-mocha-text placeholder-latte-surface1 dark:placeholder-mocha-overlay0"
+                  className="w-full bg-transparent border-none focus:ring-0 resize-none py-2.5 max-h-32 min-h-[44px] text-latte-text dark:text-mocha-text placeholder-latte-surface1 dark:placeholder-mocha-overlay0 overflow-y-auto"
                   rows={1}
-                  style={{ height: 'auto', minHeight: '44px' }}
-                  disabled={isLoading}
                 />
 
                 <button
                   onClick={handleSendMessage}
                   disabled={(!input.trim() && selectedImages.length === 0) || isLoading}
-                  className={`p-2 rounded-lg flex-shrink-0 transition-all duration-200
-                    ${((!input.trim() && selectedImages.length === 0) || isLoading) 
-                      ? 'bg-latte-surface0 dark:bg-mocha-surface1 text-latte-surface1 dark:text-mocha-overlay0 cursor-not-allowed' 
-                      : 'bg-latte-blue hover:bg-latte-lavender dark:bg-mocha-mauve dark:hover:bg-mocha-pink text-white shadow-md'
-                    }
-                  `}
+                  className={`p-2 rounded-lg transition-all duration-200 flex-shrink-0 ${
+                    (input.trim() || selectedImages.length > 0) && !isLoading
+                      ? 'bg-latte-blue text-white shadow-md hover:bg-latte-blue/90 dark:bg-mocha-blue dark:hover:bg-mocha-blue/90' 
+                      : 'bg-latte-surface0 text-latte-subtext1 dark:bg-mocha-surface0 dark:text-mocha-overlay0 cursor-not-allowed'
+                  }`}
                 >
-                  {isLoading ? <Loader2 size={20} className="animate-spin" /> : <Send size={20} />}
+                  {isLoading ? (
+                    <Loader2 size={20} className="animate-spin" />
+                  ) : (
+                    <Send size={20} />
+                  )}
                 </button>
               </div>
             </div>
-          </div>
-          <div className="text-center mt-2">
-            <p className="text-[10px] text-latte-subtext1 dark:text-mocha-overlay0">
-               Powered by Pollinations. AI generated content may be inaccurate.
-            </p>
+            
+            <div className="text-center mt-2">
+              <p className="text-[10px] text-latte-subtext1 dark:text-mocha-overlay0">
+                AI can make mistakes. Check important info.
+              </p>
+            </div>
           </div>
         </div>
       </div>
+
+      {/* Mobile Backdrop for Right Panel */}
+      {isRightPanelOpen && (
+        <div 
+          className="fixed inset-0 bg-black/50 backdrop-blur-sm z-[25] md:hidden transition-opacity duration-300"
+          onClick={() => setIsRightPanelOpen(false)}
+          aria-hidden="true"
+        />
+      )}
 
       {/* Right Panel */}
       <RightPanel 
@@ -536,16 +671,6 @@ const App: React.FC = () => {
         onSystemInstructionChange={handleSystemInstructionChange}
       />
 
-      {/* Overlays for mobile */}
-      {(isLeftSidebarOpen || isRightPanelOpen) && (
-        <div 
-          className="fixed inset-0 bg-black/50 z-20 md:hidden backdrop-blur-sm"
-          onClick={() => {
-              setIsLeftSidebarOpen(false);
-              setIsRightPanelOpen(false);
-          }}
-        />
-      )}
     </div>
   );
 };

@@ -49,6 +49,45 @@ export const fetchModels = async (): Promise<{ textModels: string[] }> => {
   }
 };
 
+export const generateChatTitle = async (userMessage: string, model: string): Promise<string> => {
+    if (!userMessage || !userMessage.trim()) return '';
+
+    const headers = {
+        'Content-Type': 'application/json',
+        ...getAuthHeaders()
+    };
+
+    try {
+        const response = await fetch(`${API_BASE}/generate/v1/chat/completions`, {
+            method: 'POST',
+            headers: headers,
+            body: JSON.stringify({
+                model: model,
+                messages: [
+                    {
+                        role: 'system',
+                        content: 'Generate a concise, 3-5 word title for this chat session based on the user\'s message. Do not use quotes. Return only the title.'
+                    },
+                    {
+                        role: 'user',
+                        content: userMessage
+                    }
+                ],
+                stream: false
+            })
+        });
+
+        if (!response.ok) return '';
+
+        const data = await response.json();
+        const title = data.choices?.[0]?.message?.content?.trim();
+        return title ? title.replace(/^["']|["']$/g, '') : '';
+    } catch (error) {
+        console.error("Failed to generate title", error);
+        return '';
+    }
+};
+
 export const streamChatCompletion = async (
     messages: Message[],
     model: string,

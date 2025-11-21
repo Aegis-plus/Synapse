@@ -1,3 +1,4 @@
+
 import React from 'react';
 import { Plus, Trash2, Sun, Moon, MessageCircle, Cpu, Settings } from 'lucide-react';
 import { ChatSession } from '../types';
@@ -84,7 +85,7 @@ const SidebarComponent: React.FC<SidebarProps> = ({
               </div>
               <button 
                 onClick={(e) => onDeleteChat(session.id, e)}
-                className="opacity-0 group-hover:opacity-100 p-1 rounded hover:bg-latte-red/20 dark:hover:bg-mocha-red/20 text-latte-red dark:text-mocha-red transition-all"
+                className="p-1 rounded hover:bg-latte-red/20 dark:hover:bg-mocha-red/20 text-latte-red dark:text-mocha-red transition-all"
                 title="Delete chat"
               >
                 <Trash2 size={12} />
