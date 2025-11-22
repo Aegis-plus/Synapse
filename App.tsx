@@ -1,16 +1,16 @@
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Message, MessageRole, MessageType, ChatSession } from './types';
-import { fetchModels, streamChatCompletion, generateChatTitle } from './services/api';
+import { fetchModels, sendChatCompletion, generateChatTitle } from './services/api';
 import { Sidebar } from './components/Sidebar';
 import { RightPanel } from './components/RightPanel';
 import { MessageBubble } from './components/MessageBubble';
-import { Send, Menu, Loader2, AlertCircle, PanelRightOpen, PanelRightClose, PanelLeftOpen, PanelLeftClose, Settings2, MessageSquare, Paperclip, X, RotateCcw } from 'lucide-react';
+import { Send, Loader2, AlertCircle, PanelRightOpen, PanelRightClose, PanelLeftOpen, PanelLeftClose, Settings2, MessageSquare, Paperclip, X, RotateCcw } from 'lucide-react';
 import { v4 as uuidv4 } from 'uuid';
 
 const STORAGE_KEY_SESSIONS = 'pollinations_sessions_v1';
 const STORAGE_KEY_THEME = 'pollinations_theme';
-const STORAGE_KEY_MODELS = 'pollinations_selected_models';
+const STORAGE_KEY_MODELS = 'pollinations_default_model'; // Changed from selected_models to default_model
 
 const App: React.FC = () => {
   // --- State ---
@@ -30,15 +30,11 @@ const App: React.FC = () => {
         console.error("Failed to parse sessions", e);
       }
     }
-    return [{ id: uuidv4(), title: 'New Chat', messages: [], createdAt: Date.now() }];
+    return [];
   });
 
   const [currentSessionId, setCurrentSessionId] = useState<string>(() => {
-      const savedSessions = localStorage.getItem(STORAGE_KEY_SESSIONS);
-      if (savedSessions) {
-          const parsed = JSON.parse(savedSessions);
-          if (parsed.length > 0) return parsed[0].id;
-      }
+      // We initialize this, but the Effect below ensures it matches a valid session
       return ''; 
   });
 
@@ -52,23 +48,24 @@ const App: React.FC = () => {
   
   // Models State
   const [textModels, setTextModels] = useState<string[]>(['openai']);
-  const [selectedTextModel, setSelectedTextModel] = useState(() => {
-    const saved = localStorage.getItem(STORAGE_KEY_MODELS);
-    if (saved) {
-      try {
-        const parsed = JSON.parse(saved);
-        return parsed.text || 'openai';
-      } catch {
-        return 'openai';
-      }
-    }
-    return 'openai';
+  const [defaultModel, setDefaultModel] = useState(() => {
+    return localStorage.getItem(STORAGE_KEY_MODELS) || 'openai';
   });
   
   const [error, setError] = useState<string | null>(null);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // --- Helpers to access current session data ---
+  
+  const getCurrentSession = useCallback(() => sessions.find(s => s.id === currentSessionId), [sessions, currentSessionId]);
+  const getCurrentMessages = () => getCurrentSession()?.messages || [];
+  const getSystemInstruction = () => getCurrentSession()?.systemInstruction || '';
+  
+  // Model is now per-session. Fallback to defaultModel if not set in session.
+  const getCurrentModel = () => getCurrentSession()?.model || defaultModel;
+  const getStreamingEnabled = () => getCurrentSession()?.enableStreaming ?? true;
 
   // --- Effects ---
 
@@ -86,27 +83,16 @@ const App: React.FC = () => {
       try {
         const { textModels: fetchedModels } = await fetchModels();
         
-        // Handle Persistence: Check if we have a saved model
-        const savedModels = localStorage.getItem(STORAGE_KEY_MODELS);
-        let savedModel = '';
-        if (savedModels) {
-            try { savedModel = JSON.parse(savedModels).text; } catch {}
-        }
-
         let finalModels = fetchedModels.length ? fetchedModels : ['openai'];
-
-        // If saved model exists but isn't in the fetched list, add it to ensure it remains selectable
-        if (savedModel && !finalModels.includes(savedModel)) {
-            finalModels = [savedModel, ...finalModels];
+        
+        // Ensure the default model is in the list
+        if (defaultModel && !finalModels.includes(defaultModel)) {
+            finalModels = [defaultModel, ...finalModels];
         }
 
         setTextModels(finalModels);
-        
-        // Ensure the correct model is selected
-        if (savedModel) {
-            setSelectedTextModel(savedModel);
-        } else if (finalModels.length > 0) {
-            setSelectedTextModel(finalModels[0]);
+        if (finalModels.length > 0 && !defaultModel) {
+            setDefaultModel(finalModels[0]);
         }
       } catch (err) {
         console.error("Model fetch error", err);
@@ -116,22 +102,34 @@ const App: React.FC = () => {
     loadModels();
   }, []);
 
-  // 3. Save Model Selection
+  // 3. Init Sessions / Default Session
   useEffect(() => {
-    localStorage.setItem(STORAGE_KEY_MODELS, JSON.stringify({ text: selectedTextModel }));
-  }, [selectedTextModel]);
+     if (sessions.length === 0) {
+         const newId = uuidv4();
+         const newSession: ChatSession = { 
+             id: newId, 
+             title: 'New Chat', 
+             messages: [], 
+             createdAt: Date.now(),
+             model: defaultModel,
+             enableStreaming: true
+         };
+         setSessions([newSession]);
+         setCurrentSessionId(newId);
+     } else if (!currentSessionId || !sessions.find(s => s.id === currentSessionId)) {
+         setCurrentSessionId(sessions[0].id);
+     }
+  }, [sessions, currentSessionId, defaultModel]);
 
-  // 4. Sync Current Session ID if empty
-  useEffect(() => {
-    if (!currentSessionId && sessions.length > 0) {
-        setCurrentSessionId(sessions[0].id);
-    }
-  }, [sessions, currentSessionId]);
-
-  // 5. Persist Sessions
+  // 4. Persist Sessions
   useEffect(() => {
     localStorage.setItem(STORAGE_KEY_SESSIONS, JSON.stringify(sessions));
   }, [sessions]);
+  
+  // 5. Persist Default Model
+  useEffect(() => {
+      localStorage.setItem(STORAGE_KEY_MODELS, defaultModel);
+  }, [defaultModel]);
 
   // 6. Auto-scroll
   useEffect(() => {
@@ -147,7 +145,6 @@ const App: React.FC = () => {
           }
       };
       window.addEventListener('resize', handleResize);
-      // Initial check
       if (window.innerWidth < 768) {
           setIsLeftSidebarOpen(false);
           setIsRightPanelOpen(false);
@@ -156,46 +153,16 @@ const App: React.FC = () => {
   }, []);
 
 
-  // --- Helpers ---
+  // --- State Updaters ---
 
-  const getCurrentSession = () => sessions.find(s => s.id === currentSessionId);
-  const getCurrentMessages = () => getCurrentSession()?.messages || [];
-  const getSystemInstruction = () => getCurrentSession()?.systemInstruction || '';
-
-  const updateCurrentSessionMessages = (newMessages: Message[]) => {
+  const updateCurrentSession = useCallback((updater: (session: ChatSession) => ChatSession) => {
       setSessions(prev => prev.map(s => {
           if (s.id === currentSessionId) {
-              let title = s.title;
-              if (s.title === 'New Chat' && newMessages.length > 0) {
-                  const firstUserMsg = newMessages.find(m => m.role === MessageRole.User);
-                  if (firstUserMsg) {
-                      title = firstUserMsg.content.slice(0, 30) + (firstUserMsg.content.length > 30 ? '...' : '');
-                  }
-              }
-              return { ...s, title, messages: newMessages };
+              return updater(s);
           }
           return s;
       }));
-  };
-
-  // Using useCallback to stabilize reference
-  const handleSystemInstructionChange = useCallback((value: string) => {
-    setSessions(prev => prev.map(s => {
-        if (s.id === currentSessionId) {
-            return { ...s, systemInstruction: value };
-        }
-        return s;
-    }));
   }, [currentSessionId]);
-
-  const convertFileToBase64 = (file: File): Promise<string> => {
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.readAsDataURL(file);
-      reader.onload = () => resolve(reader.result as string);
-      reader.onerror = error => reject(error);
-    });
-  };
 
   // --- Handlers ---
 
@@ -205,7 +172,9 @@ const App: React.FC = () => {
           title: 'New Chat',
           messages: [],
           createdAt: Date.now(),
-          systemInstruction: '' // Empty by default
+          systemInstruction: '',
+          model: defaultModel, // Start with default
+          enableStreaming: true
       };
       setSessions(prev => [newSession, ...prev]);
       setCurrentSessionId(newSession.id);
@@ -219,24 +188,46 @@ const App: React.FC = () => {
       e.stopPropagation();
       const newSessions = sessions.filter(s => s.id !== id);
       setSessions(newSessions);
-      
-      if (currentSessionId === id) {
-          if (newSessions.length > 0) {
-              setCurrentSessionId(newSessions[0].id);
-          } else {
-              handleNewChat();
-          }
-      }
+      // The effect will handle resetting currentSessionId if it became invalid
+  };
+
+  const handleRenameChat = (id: string, newTitle: string) => {
+      setSessions(prev => prev.map(s => 
+        s.id === id ? { ...s, title: newTitle } : s
+      ));
   };
 
   const handleToggleTheme = () => {
       setTheme(prev => prev === 'dark' ? 'light' : 'dark');
   };
 
+  // Configuration Handlers (Right Panel)
+  const handleSystemInstructionChange = (value: string) => {
+    updateCurrentSession(s => ({ ...s, systemInstruction: value }));
+  };
+  
+  const handleModelChange = (model: string) => {
+      updateCurrentSession(s => ({ ...s, model: model }));
+      setDefaultModel(model); // Also update global default for convenience
+  };
+  
+  const handleStreamingToggle = () => {
+      updateCurrentSession(s => ({ ...s, enableStreaming: !(s.enableStreaming ?? true) }));
+  };
+
+  // Input Handlers
   const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files.length > 0) {
-      const files = Array.from(e.target.files);
-      const imagePromises = files.map(file => convertFileToBase64(file as File));
+      const files = Array.from(e.target.files) as File[];
+      const imagePromises = files.map(file => {
+        return new Promise<string>((resolve, reject) => {
+            const reader = new FileReader();
+            reader.readAsDataURL(file);
+            reader.onload = () => resolve(reader.result as string);
+            reader.onerror = error => reject(error);
+        });
+      });
+      
       try {
         const base64Images = await Promise.all(imagePromises);
         setSelectedImages(prev => [...prev, ...base64Images]);
@@ -255,7 +246,12 @@ const App: React.FC = () => {
       if (items[i].type.indexOf('image') !== -1) {
         const file = items[i].getAsFile();
         if (file) {
-          imagePromises.push(convertFileToBase64(file as File));
+             imagePromises.push(new Promise<string>((resolve, reject) => {
+                const reader = new FileReader();
+                reader.readAsDataURL(file);
+                reader.onload = () => resolve(reader.result as string);
+                reader.onerror = error => reject(error);
+            }));
         }
       }
     }
@@ -275,6 +271,44 @@ const App: React.FC = () => {
     setSelectedImages(prev => prev.filter((_, i) => i !== index));
   };
 
+  // Chat Logic
+  const handleSendMessage = async () => {
+    if ((!input.trim() && selectedImages.length === 0) || isLoading) return;
+    
+    const session = getCurrentSession();
+    if (!session) return; // Should not happen due to effects
+    
+    const currentMsgs = session.messages;
+    const isFirstMessage = currentMsgs.length === 0;
+    const activeModel = session.model || defaultModel;
+    
+    const userMessage: Message = {
+      id: uuidv4(),
+      role: MessageRole.User,
+      content: input.trim(),
+      type: MessageType.Text,
+      images: selectedImages.length > 0 ? [...selectedImages] : undefined
+    };
+
+    const updatedMessages = [...currentMsgs, userMessage];
+    updateCurrentSession(s => ({ ...s, messages: updatedMessages }));
+    
+    const textContent = userMessage.content;
+    setInput('');
+    setSelectedImages([]);
+    setIsLoading(true);
+    setError(null);
+    
+    // Title Generation
+    if (isFirstMessage && textContent) {
+        generateChatTitle(textContent, activeModel).then(title => {
+            if (title) handleRenameChat(session.id, title);
+        });
+    }
+
+    await handleTextGeneration(updatedMessages, activeModel, session.enableStreaming ?? true);
+  };
+  
   const handleEditMessage = async (id: string, newContent: string) => {
     if (isLoading) return;
     
@@ -284,23 +318,16 @@ const App: React.FC = () => {
     const msgIndex = session.messages.findIndex(m => m.id === id);
     if (msgIndex === -1) return;
 
-    // Slice history to remove everything after the edited message
+    // Slice history
     const newHistory = session.messages.slice(0, msgIndex + 1);
-    
-    // Update content of the edited message
-    newHistory[msgIndex] = { 
-      ...newHistory[msgIndex], 
-      content: newContent 
-    };
+    newHistory[msgIndex] = { ...newHistory[msgIndex], content: newContent };
 
-    // Update session and trigger generation
-    updateCurrentSessionMessages(newHistory);
+    updateCurrentSession(s => ({ ...s, messages: newHistory }));
     
-    // Only generate if it's a user message (usually true for edits)
     if (newHistory[msgIndex].role === MessageRole.User) {
       setIsLoading(true);
       setError(null);
-      await handleTextGeneration(newHistory);
+      await handleTextGeneration(newHistory, session.model || defaultModel, session.enableStreaming ?? true);
     }
   };
 
@@ -314,109 +341,65 @@ const App: React.FC = () => {
     
     const lastMessage = messages[messages.length - 1];
     
-    // Only regenerate if last message is from assistant
     if (lastMessage.role === MessageRole.Assistant) {
-        // Remove the last message (the AI response) and trigger generation again
         const historyWithoutLast = messages.slice(0, -1);
-        
-        // Update state immediately to remove the old message
-        updateCurrentSessionMessages(historyWithoutLast);
-        
+        updateCurrentSession(s => ({ ...s, messages: historyWithoutLast }));
         setIsLoading(true);
         setError(null);
-        await handleTextGeneration(historyWithoutLast);
+        await handleTextGeneration(historyWithoutLast, session.model || defaultModel, session.enableStreaming ?? true);
     }
   };
 
-  const handleSendMessage = async () => {
-    if ((!input.trim() && selectedImages.length === 0) || isLoading) return;
-    if (!currentSessionId) handleNewChat();
-
-    const currentMsgs = getCurrentMessages();
-    // Check if this is the start of the conversation for title generation
-    const isFirstMessage = currentMsgs.length === 0;
-    
-    const userMessage: Message = {
-      id: uuidv4(),
-      role: MessageRole.User,
-      content: input.trim(),
-      type: MessageType.Text,
-      images: selectedImages.length > 0 ? [...selectedImages] : undefined
-    };
-
-    const updatedMessages = [...currentMsgs, userMessage];
-    updateCurrentSessionMessages(updatedMessages);
-    
-    const textContent = userMessage.content;
-    setInput('');
-    setSelectedImages([]);
-    setIsLoading(true);
-    setError(null);
-    
-    // Trigger AI Title Generation in background if it's the first message
-    if (isFirstMessage && textContent) {
-        generateChatTitle(textContent, selectedTextModel).then(title => {
-            if (title) {
-                setSessions(prev => prev.map(s => {
-                    if (s.id === currentSessionId) {
-                        return { ...s, title };
-                    }
-                    return s;
-                }));
-            }
-        });
-    }
-
-    await handleTextGeneration(updatedMessages);
-  };
-
-  const handleTextGeneration = async (currentHistory: Message[]) => {
+  const handleTextGeneration = async (currentHistory: Message[], model: string, enableStreaming: boolean) => {
     const botMessageId = uuidv4();
     const botMessage: Message = {
         id: botMessageId,
         role: MessageRole.Assistant,
         content: '',
         type: MessageType.Text,
-        isStreaming: true,
-        model: selectedTextModel
+        isStreaming: true, // UI shows loading/cursor
+        model: model
     };
 
     const historyWithBot = [...currentHistory, botMessage];
-    updateCurrentSessionMessages(historyWithBot);
+    updateCurrentSession(s => ({ ...s, messages: historyWithBot }));
 
-    // Prepare API messages (Inject System Instruction)
     const sysInstruction = getSystemInstruction();
     let apiMessages = [...currentHistory];
     
     if (sysInstruction.trim()) {
         apiMessages = [
-            {
-                id: 'system',
-                role: MessageRole.System,
-                content: sysInstruction,
-                type: MessageType.Text
-            },
+            { id: 'system', role: MessageRole.System, content: sysInstruction, type: MessageType.Text },
             ...apiMessages
         ];
     }
 
     try {
-        await streamChatCompletion(apiMessages, selectedTextModel, (chunk) => {
-            setSessions(prev => prev.map(s => {
-                if (s.id === currentSessionId) {
-                    return {
-                        ...s,
-                        messages: s.messages.map(msg => {
-                            if (msg.id === botMessageId) {
-                                return { ...msg, content: msg.content + chunk };
-                            }
-                            return msg;
-                        })
-                    };
-                }
-                return s;
-            }));
-        });
+        await sendChatCompletion(
+            apiMessages, 
+            model, 
+            (chunk) => {
+                // This callback handles both streaming chunks and full non-streaming response
+                setSessions(prev => prev.map(s => {
+                    if (s.id === currentSessionId) {
+                        return {
+                            ...s,
+                            messages: s.messages.map(msg => {
+                                if (msg.id === botMessageId) {
+                                    // If streaming, chunk is a part. If not, chunk is the whole thing.
+                                    // Since we start with empty content, appending works for stream.
+                                    // For non-stream, we receive one big chunk.
+                                    return { ...msg, content: msg.content + chunk };
+                                }
+                                return msg;
+                            })
+                        };
+                    }
+                    return s;
+                }));
+            },
+            enableStreaming
+        );
         
         // Finalize
         setSessions(prev => prev.map(s => {
@@ -433,7 +416,7 @@ const App: React.FC = () => {
 
     } catch (err: any) {
         console.error(err);
-        setError(err.message || "Failed to generate text response");
+        setError(err.message || "Failed to generate response");
         setSessions(prev => prev.map(s => {
              if (s.id === currentSessionId) {
                  const msg = s.messages.find(m => m.id === botMessageId);
@@ -481,6 +464,7 @@ const App: React.FC = () => {
         onNewChat={handleNewChat}
         onSelectChat={setCurrentSessionId}
         onDeleteChat={handleDeleteChat}
+        onRenameChat={handleRenameChat}
         theme={theme}
         onToggleTheme={handleToggleTheme}
         isOpen={isLeftSidebarOpen}
@@ -665,8 +649,10 @@ const App: React.FC = () => {
         isOpen={isRightPanelOpen}
         onCloseMobile={() => setIsRightPanelOpen(false)}
         textModels={textModels}
-        selectedTextModel={selectedTextModel}
-        onSelectTextModel={setSelectedTextModel}
+        selectedTextModel={getCurrentModel()}
+        onSelectTextModel={handleModelChange}
+        enableStreaming={getStreamingEnabled()}
+        onToggleStreaming={handleStreamingToggle}
         systemInstruction={getSystemInstruction()}
         onSystemInstructionChange={handleSystemInstructionChange}
       />

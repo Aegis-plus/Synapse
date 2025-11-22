@@ -1,6 +1,6 @@
 
 import React from 'react';
-import { X, MessageSquare, Sliders, Info } from 'lucide-react';
+import { X, MessageSquare, Sliders, Info, Zap } from 'lucide-react';
 
 interface RightPanelProps {
   isOpen: boolean;
@@ -10,6 +10,9 @@ interface RightPanelProps {
   selectedTextModel: string;
   onSelectTextModel: (model: string) => void;
   
+  enableStreaming: boolean;
+  onToggleStreaming: () => void;
+
   systemInstruction: string;
   onSystemInstructionChange: (value: string) => void;
 }
@@ -20,6 +23,8 @@ const RightPanelComponent: React.FC<RightPanelProps> = ({
   textModels,
   selectedTextModel,
   onSelectTextModel,
+  enableStreaming,
+  onToggleStreaming,
   systemInstruction,
   onSystemInstructionChange
 }) => {
@@ -56,12 +61,12 @@ const RightPanelComponent: React.FC<RightPanelProps> = ({
         <div className="space-y-2">
           <label className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-latte-subtext1 dark:text-mocha-overlay0">
             <Info size={12} />
-            System System (Prompt)
+            System Instruction
           </label>
           <textarea 
             value={systemInstruction}
             onChange={(e) => onSystemInstructionChange(e.target.value)}
-            placeholder="You are a helpful AI assistant. You reply in a concise and witty manner..."
+            placeholder="You are a helpful AI assistant..."
             className="w-full h-40 p-3 text-sm rounded-lg outline-none resize-none transition-all
               bg-latte-mantle border border-latte-surface0 text-latte-text focus:border-latte-blue
               dark:bg-mocha-surface0 dark:border-mocha-surface1 dark:text-mocha-text dark:focus:border-mocha-mauve"
@@ -90,6 +95,29 @@ const RightPanelComponent: React.FC<RightPanelProps> = ({
               <option key={model} value={model}>{model}</option>
             ))}
           </select>
+          <p className="text-[10px] text-latte-subtext1 dark:text-mocha-overlay0">
+            Specific to this chat session.
+          </p>
+        </div>
+
+        <hr className="border-latte-surface0 dark:border-mocha-surface0 opacity-50" />
+
+        {/* Streaming Toggle */}
+        <div className="flex items-center justify-between">
+          <label className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-latte-subtext1 dark:text-mocha-overlay0 cursor-pointer" onClick={onToggleStreaming}>
+            <Zap size={12} />
+            Stream Responses
+          </label>
+          <button
+            onClick={onToggleStreaming}
+            className={`w-10 h-6 rounded-full p-1 transition-colors duration-200 ease-in-out relative focus:outline-none
+              ${enableStreaming ? 'bg-latte-green dark:bg-mocha-green' : 'bg-latte-surface1 dark:bg-mocha-surface1'}
+            `}
+          >
+            <div className={`w-4 h-4 bg-white rounded-full shadow-sm transform transition-transform duration-200
+              ${enableStreaming ? 'translate-x-4' : 'translate-x-0'}
+            `} />
+          </button>
         </div>
 
       </div>

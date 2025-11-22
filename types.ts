@@ -16,6 +16,7 @@ export interface Message {
   type: MessageType;
   isStreaming?: boolean;
   images?: string[];
+  model?: string;
 }
 
 export interface ChatSession {
@@ -24,6 +25,8 @@ export interface ChatSession {
   messages: Message[];
   createdAt: number;
   systemInstruction?: string;
+  model?: string;
+  enableStreaming?: boolean;
 }
 
 export interface Model {

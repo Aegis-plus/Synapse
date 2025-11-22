@@ -1,6 +1,6 @@
 
-import React from 'react';
-import { Plus, Trash2, Sun, Moon, MessageCircle, Cpu, Settings } from 'lucide-react';
+import React, { useState, useEffect, useRef } from 'react';
+import { Plus, Trash2, Sun, Moon, MessageCircle, Cpu, Pencil, Check, X } from 'lucide-react';
 import { ChatSession } from '../types';
 
 interface SidebarProps {
@@ -9,6 +9,7 @@ interface SidebarProps {
   onNewChat: () => void;
   onSelectChat: (id: string) => void;
   onDeleteChat: (id: string, e: React.MouseEvent) => void;
+  onRenameChat: (id: string, newTitle: string) => void;
   
   theme: 'light' | 'dark';
   onToggleTheme: () => void;
@@ -23,11 +24,49 @@ const SidebarComponent: React.FC<SidebarProps> = ({
   onNewChat,
   onSelectChat,
   onDeleteChat,
+  onRenameChat,
   theme,
   onToggleTheme,
   isOpen,
   onCloseMobile
 }) => {
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editTitle, setEditTitle] = useState('');
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (editingId && inputRef.current) {
+      inputRef.current.focus();
+    }
+  }, [editingId]);
+
+  const startEditing = (e: React.MouseEvent, session: ChatSession) => {
+    e.stopPropagation();
+    setEditingId(session.id);
+    setEditTitle(session.title);
+  };
+
+  const saveTitle = (e?: React.FormEvent) => {
+    e?.stopPropagation();
+    if (editingId && editTitle.trim()) {
+      onRenameChat(editingId, editTitle.trim());
+    }
+    setEditingId(null);
+  };
+
+  const cancelEditing = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    setEditingId(null);
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter') {
+      saveTitle();
+    } else if (e.key === 'Escape') {
+      setEditingId(null);
+    }
+  };
+
   return (
     <aside className={`
       fixed inset-y-0 left-0 z-30 w-72 
@@ -69,8 +108,10 @@ const SidebarComponent: React.FC<SidebarProps> = ({
             <div 
               key={session.id}
               onClick={() => {
-                onSelectChat(session.id);
-                if (window.innerWidth < 768 && onCloseMobile) onCloseMobile();
+                if (editingId !== session.id) {
+                  onSelectChat(session.id);
+                  if (window.innerWidth < 768 && onCloseMobile) onCloseMobile();
+                }
               }}
               className={`group flex items-center justify-between p-2.5 rounded-lg text-sm cursor-pointer transition-colors
                 ${session.id === currentSessionId 
@@ -79,17 +120,44 @@ const SidebarComponent: React.FC<SidebarProps> = ({
                 }
               `}
             >
-              <div className="flex items-center gap-2 overflow-hidden">
-                <MessageCircle size={14} className="flex-shrink-0 opacity-70" />
-                <span className="truncate">{session.title}</span>
-              </div>
-              <button 
-                onClick={(e) => onDeleteChat(session.id, e)}
-                className="p-1 rounded hover:bg-latte-red/20 dark:hover:bg-mocha-red/20 text-latte-red dark:text-mocha-red transition-all"
-                title="Delete chat"
-              >
-                <Trash2 size={12} />
-              </button>
+              {editingId === session.id ? (
+                <div className="flex items-center w-full gap-2" onClick={e => e.stopPropagation()}>
+                  <input
+                    ref={inputRef}
+                    type="text"
+                    value={editTitle}
+                    onChange={(e) => setEditTitle(e.target.value)}
+                    onKeyDown={handleKeyDown}
+                    className="flex-1 bg-latte-base dark:bg-mocha-base border border-latte-blue dark:border-mocha-blue rounded px-1.5 py-0.5 text-sm outline-none"
+                  />
+                  <button onClick={() => saveTitle()} className="text-latte-green dark:text-mocha-green p-1 hover:bg-latte-surface0 dark:hover:bg-mocha-surface0 rounded"><Check size={14} /></button>
+                  <button onClick={cancelEditing} className="text-latte-red dark:text-mocha-red p-1 hover:bg-latte-surface0 dark:hover:bg-mocha-surface0 rounded"><X size={14} /></button>
+                </div>
+              ) : (
+                <>
+                  <div className="flex items-center gap-2 overflow-hidden flex-1">
+                    <MessageCircle size={14} className="flex-shrink-0 opacity-70" />
+                    <span className="truncate">{session.title}</span>
+                  </div>
+                  
+                  <div className="flex items-center gap-0.5 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity">
+                    <button 
+                      onClick={(e) => startEditing(e, session)}
+                      className="p-1 rounded hover:bg-latte-blue/10 dark:hover:bg-mocha-blue/20 text-latte-blue dark:text-mocha-blue transition-all"
+                      title="Rename chat"
+                    >
+                      <Pencil size={12} />
+                    </button>
+                    <button 
+                      onClick={(e) => onDeleteChat(session.id, e)}
+                      className="p-1 rounded hover:bg-latte-red/20 dark:hover:bg-mocha-red/20 text-latte-red dark:text-mocha-red transition-all"
+                      title="Delete chat"
+                    >
+                      <Trash2 size={12} />
+                    </button>
+                  </div>
+                </>
+              )}
             </div>
           ))}
         </div>
@@ -112,12 +180,4 @@ const SidebarComponent: React.FC<SidebarProps> = ({
   );
 };
 
-export const Sidebar = React.memo(SidebarComponent, (prev, next) => {
-  return (
-    prev.isOpen === next.isOpen &&
-    prev.theme === next.theme &&
-    prev.currentSessionId === next.currentSessionId &&
-    prev.sessions.length === next.sessions.length &&
-    prev.sessions.every((s, i) => s.id === next.sessions[i].id && s.title === next.sessions[i].title)
-  );
-});
+export const Sidebar = React.memo(SidebarComponent);

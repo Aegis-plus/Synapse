@@ -88,10 +88,11 @@ export const generateChatTitle = async (userMessage: string, model: string): Pro
     }
 };
 
-export const streamChatCompletion = async (
+export const sendChatCompletion = async (
     messages: Message[],
     model: string,
-    onChunk: (content: string) => void
+    onChunk: (content: string) => void,
+    shouldStream: boolean = true
 ): Promise<void> => {
     const apiMessages = messages.map(m => {
         if (m.images && m.images.length > 0) {
@@ -125,7 +126,7 @@ export const streamChatCompletion = async (
         body: JSON.stringify({
             model: model,
             messages: apiMessages,
-            stream: true
+            stream: shouldStream
         })
     });
 
@@ -134,6 +135,15 @@ export const streamChatCompletion = async (
         throw new Error(`Chat failed: ${response.status} - ${errorText}`);
     }
 
+    // Handle Non-Streaming
+    if (!shouldStream) {
+        const data = await response.json();
+        const content = data.choices?.[0]?.message?.content || '';
+        onChunk(content);
+        return;
+    }
+
+    // Handle Streaming
     if (!response.body) throw new Error('No response body');
 
     const reader = response.body.getReader();
