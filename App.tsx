@@ -56,6 +56,7 @@ const App: React.FC = () => {
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   // --- Helpers to access current session data ---
   
@@ -138,13 +139,21 @@ const App: React.FC = () => {
 
   // 7. Handle Resize for mobile responsiveness
   useEffect(() => {
+      let lastWidth = window.innerWidth;
       const handleResize = () => {
-          if (window.innerWidth < 768) {
+          const currentWidth = window.innerWidth;
+          // Only close if we are strictly crossing the boundary from desktop to mobile
+          // This prevents the keyboard appearing on mobile (which resizes height but not width, or minor width changes) from closing the menu
+          if (lastWidth >= 768 && currentWidth < 768) {
               setIsLeftSidebarOpen(false);
               setIsRightPanelOpen(false);
           }
+          lastWidth = currentWidth;
       };
+      
       window.addEventListener('resize', handleResize);
+      
+      // Initial check
       if (window.innerWidth < 768) {
           setIsLeftSidebarOpen(false);
           setIsRightPanelOpen(false);
@@ -296,6 +305,12 @@ const App: React.FC = () => {
     const textContent = userMessage.content;
     setInput('');
     setSelectedImages([]);
+    
+    // Reset textarea height to auto
+    if (textareaRef.current) {
+      textareaRef.current.style.height = 'auto';
+    }
+
     setIsLoading(true);
     setError(null);
     
@@ -595,6 +610,7 @@ const App: React.FC = () => {
                 </button>
 
                 <textarea
+                  ref={textareaRef}
                   value={input}
                   onChange={(e) => {
                     setInput(e.target.value);
