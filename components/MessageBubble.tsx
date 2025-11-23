@@ -113,6 +113,7 @@ const MessageBubbleComponent: React.FC<MessageBubbleProps> = ({ message, isDark 
   const isUser = message.role === MessageRole.User;
   const [isEditing, setIsEditing] = useState(false);
   const [editContent, setEditContent] = useState(message.content);
+  const [isCopied, setIsCopied] = useState(false);
 
   // Select syntax highlighter style based on theme
   const syntaxStyle = isDark ? vscDarkPlus : vs;
@@ -131,6 +132,17 @@ const MessageBubbleComponent: React.FC<MessageBubbleProps> = ({ message, isDark 
   const handleCancel = () => {
     setEditContent(message.content);
     setIsEditing(false);
+  };
+
+  const handleCopy = async () => {
+    if (!message.content) return;
+    try {
+      await navigator.clipboard.writeText(message.content);
+      setIsCopied(true);
+      setTimeout(() => setIsCopied(false), 2000);
+    } catch (err) {
+      console.error('Failed to copy:', err);
+    }
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -288,10 +300,21 @@ const MessageBubbleComponent: React.FC<MessageBubbleProps> = ({ message, isDark 
            {isUser && !isEditing && onEdit && !message.isStreaming && (
              <button
                 onClick={() => setIsEditing(true)}
-                className="opacity-0 group-hover:opacity-100 transition-opacity p-1.5 rounded-full bg-latte-surface0 dark:bg-mocha-surface0 text-latte-subtext1 dark:text-mocha-overlay0 hover:text-latte-text dark:hover:text-mocha-text shadow-sm hover:shadow-md"
+                className="opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity p-1.5 rounded-full bg-latte-surface0 dark:bg-mocha-surface0 text-latte-subtext1 dark:text-mocha-overlay0 hover:text-latte-text dark:hover:text-mocha-text shadow-sm hover:shadow-md"
                 title="Edit message"
              >
                 <Pencil size={14} />
+             </button>
+          )}
+
+          {/* Copy Button (Assistant) */}
+          {!isUser && !message.isStreaming && message.content && (
+             <button
+                onClick={handleCopy}
+                className="opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity p-1.5 rounded-full bg-latte-surface0 dark:bg-mocha-surface0 text-latte-subtext1 dark:text-mocha-overlay0 hover:text-latte-text dark:hover:text-mocha-text shadow-sm hover:shadow-md"
+                title="Copy response"
+             >
+                {isCopied ? <Check size={14} className="text-latte-green dark:text-mocha-green" /> : <Copy size={14} />}
              </button>
           )}
         </div>
