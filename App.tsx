@@ -10,7 +10,7 @@ import { v4 as uuidv4 } from 'uuid';
 
 const STORAGE_KEY_SESSIONS = 'pollinations_sessions_v1';
 const STORAGE_KEY_THEME = 'pollinations_theme';
-const STORAGE_KEY_MODELS = 'pollinations_default_model'; // Changed from selected_models to default_model
+const STORAGE_KEY_MODELS = 'pollinations_default_model';
 
 const App: React.FC = () => {
   // --- State ---
@@ -34,7 +34,6 @@ const App: React.FC = () => {
   });
 
   const [currentSessionId, setCurrentSessionId] = useState<string>(() => {
-      // We initialize this, but the Effect below ensures it matches a valid session
       return ''; 
   });
 
@@ -58,15 +57,20 @@ const App: React.FC = () => {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
-  // --- Helpers to access current session data ---
+  // --- Helpers (Memoized) ---
   
-  const getCurrentSession = useCallback(() => sessions.find(s => s.id === currentSessionId), [sessions, currentSessionId]);
-  const getCurrentMessages = () => getCurrentSession()?.messages || [];
-  const getSystemInstruction = () => getCurrentSession()?.systemInstruction || '';
-  
-  // Model is now per-session. Fallback to defaultModel if not set in session.
-  const getCurrentModel = () => getCurrentSession()?.model || defaultModel;
-  const getStreamingEnabled = () => getCurrentSession()?.enableStreaming ?? true;
+  const getCurrentSession = useCallback(() => {
+    return sessions.find(s => s.id === currentSessionId);
+  }, [sessions, currentSessionId]);
+
+  const getSystemInstruction = useCallback(() => {
+    return sessions.find(s => s.id === currentSessionId)?.systemInstruction || '';
+  }, [sessions, currentSessionId]);
+
+  // Derived state
+  const currentMessages = getCurrentSession()?.messages || [];
+  const currentModel = getCurrentSession()?.model || defaultModel;
+  const isStreamingEnabled = getCurrentSession()?.enableStreaming ?? true;
 
   // --- Effects ---
 
@@ -101,7 +105,7 @@ const App: React.FC = () => {
       }
     };
     loadModels();
-  }, []);
+  }, []); // Intentionally empty dependency array for mount only
 
   // 3. Init Sessions / Default Session
   useEffect(() => {
@@ -118,9 +122,12 @@ const App: React.FC = () => {
          setSessions([newSession]);
          setCurrentSessionId(newId);
      } else if (!currentSessionId || !sessions.find(s => s.id === currentSessionId)) {
-         setCurrentSessionId(sessions[0].id);
+         // Only set if currentSessionId is invalid or empty
+         if (sessions.length > 0) {
+             setCurrentSessionId(sessions[0].id);
+         }
      }
-  }, [sessions, currentSessionId, defaultModel]);
+  }, [sessions.length, currentSessionId, defaultModel]); // Simplified dependencies
 
   // 4. Persist Sessions
   useEffect(() => {
@@ -135,7 +142,7 @@ const App: React.FC = () => {
   // 6. Auto-scroll
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [sessions, currentSessionId, selectedImages.length]);
+  }, [currentSessionId, currentMessages.length, selectedImages.length]);
 
   // 7. Handle Resize for mobile responsiveness
   useEffect(() => {
@@ -143,7 +150,6 @@ const App: React.FC = () => {
       const handleResize = () => {
           const currentWidth = window.innerWidth;
           // Only close if we are strictly crossing the boundary from desktop to mobile
-          // This prevents the keyboard appearing on mobile (which resizes height but not width, or minor width changes) from closing the menu
           if (lastWidth >= 768 && currentWidth < 768) {
               setIsLeftSidebarOpen(false);
               setIsRightPanelOpen(false);
@@ -162,7 +168,7 @@ const App: React.FC = () => {
   }, []);
 
 
-  // --- State Updaters ---
+  // --- State Updaters (Memoized) ---
 
   const updateCurrentSession = useCallback((updater: (session: ChatSession) => ChatSession) => {
       setSessions(prev => prev.map(s => {
@@ -173,9 +179,9 @@ const App: React.FC = () => {
       }));
   }, [currentSessionId]);
 
-  // --- Handlers ---
+  // --- Handlers (Memoized) ---
 
-  const handleNewChat = () => {
+  const handleNewChat = useCallback(() => {
       const newSession: ChatSession = {
           id: uuidv4(),
           title: 'New Chat',
@@ -191,41 +197,37 @@ const App: React.FC = () => {
           setIsLeftSidebarOpen(false);
           setIsRightPanelOpen(false);
       }
-  };
+  }, [defaultModel]);
 
-  const handleDeleteChat = (id: string, e: React.MouseEvent) => {
+  const handleDeleteChat = useCallback((id: string, e: React.MouseEvent) => {
       e.stopPropagation();
-      const newSessions = sessions.filter(s => s.id !== id);
-      setSessions(newSessions);
-      // The effect will handle resetting currentSessionId if it became invalid
-  };
+      setSessions(prev => prev.filter(s => s.id !== id));
+  }, []);
 
-  const handleRenameChat = (id: string, newTitle: string) => {
+  const handleRenameChat = useCallback((id: string, newTitle: string) => {
       setSessions(prev => prev.map(s => 
         s.id === id ? { ...s, title: newTitle } : s
       ));
-  };
+  }, []);
 
-  const handleToggleTheme = () => {
+  const handleToggleTheme = useCallback(() => {
       setTheme(prev => prev === 'dark' ? 'light' : 'dark');
-  };
+  }, []);
 
-  // Configuration Handlers (Right Panel)
-  const handleSystemInstructionChange = (value: string) => {
+  const handleSystemInstructionChange = useCallback((value: string) => {
     updateCurrentSession(s => ({ ...s, systemInstruction: value }));
-  };
+  }, [updateCurrentSession]);
   
-  const handleModelChange = (model: string) => {
+  const handleModelChange = useCallback((model: string) => {
       updateCurrentSession(s => ({ ...s, model: model }));
-      setDefaultModel(model); // Also update global default for convenience
-  };
+      setDefaultModel(model); 
+  }, [updateCurrentSession]);
   
-  const handleStreamingToggle = () => {
+  const handleStreamingToggle = useCallback(() => {
       updateCurrentSession(s => ({ ...s, enableStreaming: !(s.enableStreaming ?? true) }));
-  };
+  }, [updateCurrentSession]);
 
-  // Input Handlers
-  const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileSelect = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files.length > 0) {
       const files = Array.from(e.target.files) as File[];
       const imagePromises = files.map(file => {
@@ -245,9 +247,9 @@ const App: React.FC = () => {
       }
     }
     if (fileInputRef.current) fileInputRef.current.value = '';
-  };
+  }, []);
 
-  const handlePaste = async (e: React.ClipboardEvent) => {
+  const handlePaste = useCallback(async (e: React.ClipboardEvent) => {
     const items = e.clipboardData.items;
     const imagePromises: Promise<string>[] = [];
     
@@ -274,111 +276,34 @@ const App: React.FC = () => {
         console.error("Error pasting images", err);
       }
     }
-  };
+  }, []);
 
-  const removeSelectedImage = (index: number) => {
+  const removeSelectedImage = useCallback((index: number) => {
     setSelectedImages(prev => prev.filter((_, i) => i !== index));
-  };
+  }, []);
 
-  // Chat Logic
-  const handleSendMessage = async () => {
-    if ((!input.trim() && selectedImages.length === 0) || isLoading) return;
-    
-    const session = getCurrentSession();
-    if (!session) return; // Should not happen due to effects
-    
-    const currentMsgs = session.messages;
-    const isFirstMessage = currentMsgs.length === 0;
-    const activeModel = session.model || defaultModel;
-    
-    const userMessage: Message = {
-      id: uuidv4(),
-      role: MessageRole.User,
-      content: input.trim(),
-      type: MessageType.Text,
-      images: selectedImages.length > 0 ? [...selectedImages] : undefined
-    };
+  // Core Chat Logic
 
-    const updatedMessages = [...currentMsgs, userMessage];
-    updateCurrentSession(s => ({ ...s, messages: updatedMessages }));
-    
-    const textContent = userMessage.content;
-    setInput('');
-    setSelectedImages([]);
-    
-    // Reset textarea height to auto
-    if (textareaRef.current) {
-      textareaRef.current.style.height = 'auto';
-    }
-
-    setIsLoading(true);
-    setError(null);
-    
-    // Title Generation
-    if (isFirstMessage && textContent) {
-        generateChatTitle(textContent, activeModel).then(title => {
-            if (title) handleRenameChat(session.id, title);
-        });
-    }
-
-    await handleTextGeneration(updatedMessages, activeModel, session.enableStreaming ?? true);
-  };
-  
-  const handleEditMessage = async (id: string, newContent: string) => {
-    if (isLoading) return;
-    
-    const session = getCurrentSession();
-    if (!session) return;
-
-    const msgIndex = session.messages.findIndex(m => m.id === id);
-    if (msgIndex === -1) return;
-
-    // Slice history
-    const newHistory = session.messages.slice(0, msgIndex + 1);
-    newHistory[msgIndex] = { ...newHistory[msgIndex], content: newContent };
-
-    updateCurrentSession(s => ({ ...s, messages: newHistory }));
-    
-    if (newHistory[msgIndex].role === MessageRole.User) {
-      setIsLoading(true);
-      setError(null);
-      await handleTextGeneration(newHistory, session.model || defaultModel, session.enableStreaming ?? true);
-    }
-  };
-
-  const handleRegenerate = async () => {
-    if (isLoading) return;
-    const session = getCurrentSession();
-    if (!session) return;
-    
-    const messages = session.messages;
-    if (messages.length === 0) return;
-    
-    const lastMessage = messages[messages.length - 1];
-    
-    if (lastMessage.role === MessageRole.Assistant) {
-        const historyWithoutLast = messages.slice(0, -1);
-        updateCurrentSession(s => ({ ...s, messages: historyWithoutLast }));
-        setIsLoading(true);
-        setError(null);
-        await handleTextGeneration(historyWithoutLast, session.model || defaultModel, session.enableStreaming ?? true);
-    }
-  };
-
-  const handleTextGeneration = async (currentHistory: Message[], model: string, enableStreaming: boolean) => {
+  const handleTextGeneration = useCallback(async (currentHistory: Message[], model: string, enableStreaming: boolean) => {
     const botMessageId = uuidv4();
     const botMessage: Message = {
         id: botMessageId,
         role: MessageRole.Assistant,
         content: '',
         type: MessageType.Text,
-        isStreaming: true, // UI shows loading/cursor
+        isStreaming: true, 
         model: model
     };
 
-    const historyWithBot = [...currentHistory, botMessage];
-    updateCurrentSession(s => ({ ...s, messages: historyWithBot }));
+    // 1. Add bot message placeholder
+    setSessions(prev => prev.map(s => {
+        if (s.id === currentSessionId) {
+            return { ...s, messages: [...currentHistory, botMessage] };
+        }
+        return s;
+    }));
 
+    // 2. Prepare prompt
     const sysInstruction = getSystemInstruction();
     let apiMessages = [...currentHistory];
     
@@ -394,16 +319,12 @@ const App: React.FC = () => {
             apiMessages, 
             model, 
             (chunk) => {
-                // This callback handles both streaming chunks and full non-streaming response
                 setSessions(prev => prev.map(s => {
                     if (s.id === currentSessionId) {
                         return {
                             ...s,
                             messages: s.messages.map(msg => {
                                 if (msg.id === botMessageId) {
-                                    // If streaming, chunk is a part. If not, chunk is the whole thing.
-                                    // Since we start with empty content, appending works for stream.
-                                    // For non-stream, we receive one big chunk.
                                     return { ...msg, content: msg.content + chunk };
                                 }
                                 return msg;
@@ -434,6 +355,7 @@ const App: React.FC = () => {
         setError(err.message || "Failed to generate response");
         setSessions(prev => prev.map(s => {
              if (s.id === currentSessionId) {
+                 // Remove empty bot message on failure
                  const msg = s.messages.find(m => m.id === botMessageId);
                  if (msg && !msg.content) {
                      return { ...s, messages: s.messages.filter(m => m.id !== botMessageId) };
@@ -448,17 +370,105 @@ const App: React.FC = () => {
     } finally {
         setIsLoading(false);
     }
-  };
+  }, [currentSessionId, getSystemInstruction]); // Depend on ID and system instruction getter
 
-  const handleKeyDown = (e: React.KeyboardEvent) => {
+  const handleSendMessage = useCallback(async () => {
+    if ((!input.trim() && selectedImages.length === 0) || isLoading) return;
+    
+    const session = getCurrentSession();
+    if (!session) return; 
+    
+    const currentMsgs = session.messages;
+    const isFirstMessage = currentMsgs.length === 0;
+    const activeModel = session.model || defaultModel;
+    
+    const userMessage: Message = {
+      id: uuidv4(),
+      role: MessageRole.User,
+      content: input.trim(),
+      type: MessageType.Text,
+      images: selectedImages.length > 0 ? [...selectedImages] : undefined
+    };
+
+    // Optimistic update for user message
+    const updatedMessages = [...currentMsgs, userMessage];
+    updateCurrentSession(s => ({ ...s, messages: updatedMessages }));
+    
+    const textContent = userMessage.content;
+    setInput('');
+    setSelectedImages([]);
+    
+    if (textareaRef.current) {
+      textareaRef.current.style.height = 'auto';
+    }
+
+    setIsLoading(true);
+    setError(null);
+    
+    if (isFirstMessage && textContent) {
+        generateChatTitle(textContent, activeModel).then(title => {
+            if (title) handleRenameChat(session.id, title);
+        });
+    }
+
+    await handleTextGeneration(updatedMessages, activeModel, session.enableStreaming ?? true);
+  }, [input, selectedImages, isLoading, getCurrentSession, defaultModel, updateCurrentSession, handleTextGeneration, handleRenameChat]);
+
+  const handleEditMessage = useCallback(async (id: string, newContent: string) => {
+    if (isLoading) return;
+    
+    const session = getCurrentSession();
+    if (!session) return;
+
+    const msgIndex = session.messages.findIndex(m => m.id === id);
+    if (msgIndex === -1) return;
+
+    // Slice history to remove everything after the edited message
+    const newHistory = session.messages.slice(0, msgIndex + 1);
+    newHistory[msgIndex] = { ...newHistory[msgIndex], content: newContent };
+
+    updateCurrentSession(s => ({ ...s, messages: newHistory }));
+    
+    if (newHistory[msgIndex].role === MessageRole.User) {
+      setIsLoading(true);
+      setError(null);
+      await handleTextGeneration(newHistory, session.model || defaultModel, session.enableStreaming ?? true);
+    }
+  }, [isLoading, getCurrentSession, updateCurrentSession, handleTextGeneration, defaultModel]);
+
+  const handleRegenerate = useCallback(async () => {
+    if (isLoading) return;
+    const session = getCurrentSession();
+    if (!session) return;
+    
+    const messages = session.messages;
+    if (messages.length === 0) return;
+    
+    const lastMessage = messages[messages.length - 1];
+    
+    if (lastMessage.role === MessageRole.Assistant) {
+        const historyWithoutLast = messages.slice(0, -1);
+        updateCurrentSession(s => ({ ...s, messages: historyWithoutLast }));
+        setIsLoading(true);
+        setError(null);
+        await handleTextGeneration(historyWithoutLast, session.model || defaultModel, session.enableStreaming ?? true);
+    }
+  }, [isLoading, getCurrentSession, updateCurrentSession, handleTextGeneration, defaultModel]);
+
+  const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
     const isMobile = window.innerWidth < 768;
     if (e.key === 'Enter' && !e.shiftKey && !isMobile) {
       e.preventDefault();
       handleSendMessage();
     }
-  };
+  }, [handleSendMessage]);
 
-  const currentMessages = getCurrentMessages();
+  // UI Toggles (Memoized)
+  const handleToggleLeftSidebar = useCallback(() => setIsLeftSidebarOpen(prev => !prev), []);
+  const handleToggleRightPanel = useCallback(() => setIsRightPanelOpen(prev => !prev), []);
+  const handleCloseLeftSidebar = useCallback(() => setIsLeftSidebarOpen(false), []);
+  const handleCloseRightPanel = useCallback(() => setIsRightPanelOpen(false), []);
+  const handleOpenRightPanel = useCallback(() => setIsRightPanelOpen(true), []);
 
   return (
     <div className="flex h-[100dvh] overflow-hidden bg-latte-base dark:bg-mocha-base text-latte-text dark:text-mocha-text font-sans transition-colors duration-300">
@@ -467,7 +477,7 @@ const App: React.FC = () => {
       {isLeftSidebarOpen && (
         <div 
           className="fixed inset-0 bg-black/50 backdrop-blur-sm z-[25] md:hidden transition-opacity duration-300"
-          onClick={() => setIsLeftSidebarOpen(false)}
+          onClick={handleCloseLeftSidebar}
           aria-hidden="true"
         />
       )}
@@ -483,7 +493,7 @@ const App: React.FC = () => {
         theme={theme}
         onToggleTheme={handleToggleTheme}
         isOpen={isLeftSidebarOpen}
-        onCloseMobile={() => setIsLeftSidebarOpen(false)}
+        onCloseMobile={handleCloseLeftSidebar}
       />
 
       {/* Main Content */}
@@ -493,7 +503,7 @@ const App: React.FC = () => {
         <div className="flex items-center justify-between p-4 border-b border-latte-surface0 dark:border-mocha-surface0 bg-latte-base/95 dark:bg-mocha-base/95 backdrop-blur sticky top-0 z-20">
           <div className="flex items-center gap-2">
               <button 
-                onClick={() => setIsLeftSidebarOpen(!isLeftSidebarOpen)} 
+                onClick={handleToggleLeftSidebar} 
                 className="p-2 hover:bg-latte-surface0 dark:hover:bg-mocha-surface0 rounded-lg transition-colors"
                 title="Toggle Sidebar"
               >
@@ -504,7 +514,7 @@ const App: React.FC = () => {
           
           <div className="flex items-center gap-2">
               <button 
-                onClick={() => setIsRightPanelOpen(!isRightPanelOpen)} 
+                onClick={handleToggleRightPanel} 
                 className={`p-2 rounded-lg transition-colors ${isRightPanelOpen ? 'bg-latte-surface0 dark:bg-mocha-surface0' : 'hover:bg-latte-surface0 dark:hover:bg-mocha-surface0'}`}
                 title="Toggle Settings"
               >
@@ -514,8 +524,8 @@ const App: React.FC = () => {
         </div>
 
         {/* Chat Area */}
-        <div className="flex-1 overflow-y-auto p-4 md:p-8 scroll-smooth relative">
-          <div className="max-w-3xl mx-auto">
+        <div className="flex-1 overflow-y-auto p-4 md:p-8 scroll-smooth relative overscroll-none">
+          <div className="max-w-6xl mx-auto">
             {currentMessages.length === 0 && (
                <div className="flex flex-col items-center justify-center min-h-[50vh] text-center opacity-50">
                   <div className="bg-latte-surface1 dark:bg-mocha-surface0 p-4 rounded-full mb-4 transition-colors">
@@ -550,7 +560,7 @@ const App: React.FC = () => {
 
         {/* Input Area */}
         <div className="p-4 border-t border-latte-surface0 dark:border-mocha-surface0 bg-latte-base dark:bg-mocha-base transition-colors z-10">
-          <div className="max-w-3xl mx-auto relative">
+          <div className="max-w-6xl mx-auto relative">
             
             {/* Regenerate Button */}
             {!isLoading && currentMessages.length > 0 && currentMessages[currentMessages.length - 1].role === MessageRole.Assistant && (
@@ -655,7 +665,7 @@ const App: React.FC = () => {
       {isRightPanelOpen && (
         <div 
           className="fixed inset-0 bg-black/50 backdrop-blur-sm z-[25] md:hidden transition-opacity duration-300"
-          onClick={() => setIsRightPanelOpen(false)}
+          onClick={handleCloseRightPanel}
           aria-hidden="true"
         />
       )}
@@ -663,11 +673,11 @@ const App: React.FC = () => {
       {/* Right Panel */}
       <RightPanel 
         isOpen={isRightPanelOpen}
-        onCloseMobile={() => setIsRightPanelOpen(false)}
+        onCloseMobile={handleCloseRightPanel}
         textModels={textModels}
-        selectedTextModel={getCurrentModel()}
+        selectedTextModel={currentModel}
         onSelectTextModel={handleModelChange}
-        enableStreaming={getStreamingEnabled()}
+        enableStreaming={isStreamingEnabled}
         onToggleStreaming={handleStreamingToggle}
         systemInstruction={getSystemInstruction()}
         onSystemInstructionChange={handleSystemInstructionChange}

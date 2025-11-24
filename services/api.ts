@@ -1,7 +1,7 @@
 
 import { Model, Message, MessageRole, ChatCompletionChunk } from '../types';
 
-const API_BASE = 'https://enter.pollinations.ai/api';
+const API_BASE = 'https://text.pollinations.ai';
 
 // 1. For local testing: You can paste your API key between the quotes below
 const MANUAL_API_KEY = '';
@@ -32,7 +32,7 @@ const getAuthHeaders = () => {
 export const fetchModels = async (): Promise<{ textModels: string[] }> => {
   try {
     // Fetch text models
-    const textResponse = await fetch(`${API_BASE}/generate/v1/models`);
+    const textResponse = await fetch(`${API_BASE}/models`);
     const textData = await textResponse.json();
     
     // Parse text models
@@ -58,7 +58,7 @@ export const generateChatTitle = async (userMessage: string, model: string): Pro
     };
 
     try {
-        const response = await fetch(`${API_BASE}/generate/v1/chat/completions`, {
+        const response = await fetch(`${API_BASE}/openai`, {
             method: 'POST',
             headers: headers,
             body: JSON.stringify({
@@ -120,7 +120,7 @@ export const sendChatCompletion = async (
         ...getAuthHeaders()
     };
 
-    const response = await fetch(`${API_BASE}/generate/v1/chat/completions`, {
+    const response = await fetch(`${API_BASE}/openai`, {
         method: 'POST',
         headers: headers,
         body: JSON.stringify({

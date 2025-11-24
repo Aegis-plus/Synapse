@@ -156,7 +156,7 @@ const MessageBubbleComponent: React.FC<MessageBubbleProps> = ({ message, isDark 
 
   return (
       <div className={`flex w-full mb-6 ${isUser ? 'justify-end' : 'justify-start'} group`}>
-        <div className={`flex max-w-[90%] md:max-w-[85%] lg:max-w-[80%] ${isUser ? 'flex-row-reverse' : 'flex-row'} gap-3 items-end`}>
+        <div className={`flex max-w-full md:max-w-[95%] ${isUser ? 'flex-row-reverse' : 'flex-row'} gap-3 items-end`}>
           
           {/* Avatar */}
           <div className={`
@@ -190,7 +190,7 @@ const MessageBubbleComponent: React.FC<MessageBubbleProps> = ({ message, isDark 
             )}
 
             {/* Bubble */}
-            <div className={`px-4 py-3 rounded-2xl text-sm leading-relaxed shadow-sm w-full overflow-hidden border transition-all
+            <div className={`px-6 py-4 rounded-2xl text-lg leading-relaxed shadow-sm w-full overflow-hidden border transition-all
               ${isUser 
                 ? 'bg-latte-blue dark:bg-mocha-surface1 text-white border-transparent rounded-tr-none' 
                 : 'bg-white dark:bg-mocha-surface0 text-latte-text dark:text-mocha-text border-latte-surface0 dark:border-mocha-surface1 rounded-tl-none'
@@ -217,7 +217,7 @@ const MessageBubbleComponent: React.FC<MessageBubbleProps> = ({ message, isDark 
                      value={editContent}
                      onChange={(e) => setEditContent(e.target.value)}
                      onKeyDown={handleKeyDown}
-                     className="w-full bg-black/10 text-white p-2 rounded mb-2 outline-none resize-none text-sm font-inherit"
+                     className="w-full bg-black/10 text-white p-2 rounded mb-2 outline-none resize-none text-lg font-inherit"
                      rows={Math.max(2, editContent.split('\n').length)}
                      autoFocus
                    />
@@ -238,7 +238,7 @@ const MessageBubbleComponent: React.FC<MessageBubbleProps> = ({ message, isDark 
                  </div>
               ) : (
                   message.type === MessageType.Text && (
-                    <div className={`prose prose-sm max-w-none break-words
+                    <div className={`prose max-w-none break-words
                       ${isUser 
                         ? 'text-white prose-invert prose-p:text-white prose-headings:text-white prose-strong:text-white prose-ul:text-white prose-ol:text-white prose-a:text-white' 
                         : isDark ? 'prose-invert' : ''}

@@ -35,7 +35,7 @@ To get started with Synapse locally, follow these steps:
     ```
     API_KEY=your_pollinations_api_key_here
     ```
-    *(Note: You can obtain an API key from [Pollinations](https://enter.pollinations.ai/))*
+    *(Note: You can obtain an API key from [Pollinations](https://auth.pollinations.ai/))*
 
 4.  **Run the Development Server:**
     ```bash
